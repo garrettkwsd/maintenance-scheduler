@@ -1,10 +1,79 @@
 "use client";
+"use client";
+
 import React, { useMemo, useState } from "react";
 import { Trash2, Plus, Shuffle, Download } from "lucide-react";
 
-const uid = () => Math.random().toString(36).slice(2, 10);
+type TeamMember = {
+  id: string;
+  name: string;
+};
 
-const initialMembers = [
+type Task = {
+  id: string;
+  name: string;
+  frequencyWeeks: number;
+  qualifiedNames?: string[];
+  qualifiedIds?: string[];
+  lastCompleted: string;
+  assignEntireTeam: boolean;
+};
+
+type HistoryRow = {
+  date: string;
+  taskId: string;
+  taskName: string;
+  memberId: string;
+};
+
+type Assignment = {
+  weekStart: string;
+  taskId: string;
+  taskName: string;
+  memberId: string | null;
+  memberName: string;
+  note: string;
+};
+
+type ScheduleResult = {
+  weekStart: string;
+  assignments: Assignment[];
+};
+
+type SchedulerParams = {
+  team: TeamMember[];
+  tasks: Task[];
+  history: HistoryRow[];
+  scheduleStart: string;
+  weeklyCapacity: number;
+};
+
+type SectionCardProps = {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+};
+
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  children: React.ReactNode;
+  className?: string;
+};
+
+type TextInputProps = React.InputHTMLAttributes<HTMLInputElement>;
+
+type TextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+
+type CheckInputProps = React.InputHTMLAttributes<HTMLInputElement>;
+
+type PillProps = {
+  children: React.ReactNode;
+  tone?: "default" | "danger";
+};
+
+const uid = (): string => Math.random().toString(36).slice(2, 10);
+
+const initialMembers: TeamMember[] = [
   { id: uid(), name: "Cody" },
   { id: uid(), name: "Aiden" },
   { id: uid(), name: "Deane" },
@@ -13,7 +82,7 @@ const initialMembers = [
   { id: uid(), name: "Dave" },
 ];
 
-const initialTasks = [
+const initialTasks: Task[] = [
   { id: uid(), name: "Bathroom & Trash Cans", frequencyWeeks: 1, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave"], lastCompleted: "", assignEntireTeam: false },
   { id: uid(), name: "Wash Bay", frequencyWeeks: 2, qualifiedNames: ["Cody", "Aiden", "Josh"], lastCompleted: "", assignEntireTeam: false },
   { id: uid(), name: "Oven Flue & Burner Fan", frequencyWeeks: 36, qualifiedNames: ["Josh", "Cody"], lastCompleted: "", assignEntireTeam: false },
@@ -34,13 +103,13 @@ const initialTasks = [
   { id: uid(), name: "Sand Blast", frequencyWeeks: 4, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin"], lastCompleted: "", assignEntireTeam: false },
 ];
 
-function addWeeks(dateStr, weeks) {
+function addWeeks(dateStr: string, weeks: number): Date {
   const d = new Date(`${dateStr}T00:00:00`);
   d.setDate(d.getDate() + weeks * 7);
   return d;
 }
 
-function weekLabel(dateStr) {
+function weekLabel(dateStr: string): string {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -48,14 +117,14 @@ function weekLabel(dateStr) {
   });
 }
 
-function toYMD(date) {
+function toYMD(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
-function shuffle(arr) {
+function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -64,7 +133,7 @@ function shuffle(arr) {
   return copy;
 }
 
-function downloadJson(filename, data) {
+function downloadJson(filename: string, data: unknown): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -74,16 +143,16 @@ function downloadJson(filename, data) {
   URL.revokeObjectURL(url);
 }
 
-function buildInitialTasks(members) {
+function buildInitialTasks(members: TeamMember[]): Task[] {
   return initialTasks.map((task) => ({
     ...task,
     qualifiedIds: members
-      .filter((member) => task.qualifiedNames.includes(member.name))
+      .filter((member) => task.qualifiedNames?.includes(member.name))
       .map((member) => member.id),
   }));
 }
 
-function buildSchedule({ team, tasks, history, scheduleStart, weeklyCapacity }) {
+function buildSchedule({ team, tasks, history, scheduleStart, weeklyCapacity }: SchedulerParams): ScheduleResult {
   const memberMap = Object.fromEntries(team.map((member) => [member.id, member.name]));
   const counts = Object.fromEntries(team.map((member) => [member.id, 0]));
   const recent = Object.fromEntries(team.map((member) => [member.id, "1900-01-01"]));
@@ -97,12 +166,12 @@ function buildSchedule({ team, tasks, history, scheduleStart, weeklyCapacity }) 
 
   const weekStartDate = new Date(`${scheduleStart}T00:00:00`);
   const weekStart = toYMD(weekStartDate);
-  const assignments = [];
-  const usedMembers = new Set();
+  const assignments: Assignment[] = [];
+  const usedMembers = new Set<string>();
   const capacity = Math.max(1, Number(weeklyCapacity) || team.length || 1);
   const remainingCapacity = () => capacity - usedMembers.size;
 
-  const dueScore = (task) => {
+  const dueScore = (task: Task): number => {
     const lastCompleted = taskLastCompleted[task.id] || task.lastCompleted || "";
     if (!lastCompleted) return Number.POSITIVE_INFINITY;
     const nextDue = addWeeks(lastCompleted, Number(task.frequencyWeeks || 1));
@@ -110,7 +179,7 @@ function buildSchedule({ team, tasks, history, scheduleStart, weeklyCapacity }) 
     return Math.floor((weekStartDate.getTime() - nextDue.getTime()) / msPerWeek);
   };
 
-  const chooseMember = (qualifiedIds) => {
+  const chooseMember = (qualifiedIds: string[]): string | null => {
     const available = qualifiedIds.filter((id) => memberMap[id] && !usedMembers.has(id));
     if (!available.length) return null;
 
@@ -212,8 +281,8 @@ function buildSchedule({ team, tasks, history, scheduleStart, weeklyCapacity }) 
   return { weekStart, assignments };
 }
 
-function runSchedulerTests(team, tasks) {
-  const results = [];
+function runSchedulerTests(team: TeamMember[], tasks: Task[]): { name: string; passed: boolean }[] {
+  const results: { name: string; passed: boolean }[] = [];
   const teamwideTask = tasks.find((task) => task.assignEntireTeam);
 
   if (teamwideTask) {
@@ -274,7 +343,7 @@ function runSchedulerTests(team, tasks) {
 
   const qualifiedTask = tasks.find((task) => !task.assignEntireTeam && (task.qualifiedIds || []).length >= 1);
   if (qualifiedTask && team.length >= 2) {
-    const allowedId = qualifiedTask.qualifiedIds[0];
+    const allowedId = qualifiedTask.qualifiedIds![0];
     const generated = buildSchedule({
       team,
       tasks: [
@@ -295,7 +364,7 @@ function runSchedulerTests(team, tasks) {
   return results;
 }
 
-function SectionCard({ title, action, children, className = "" }) {
+function SectionCard({ title, action, children, className = "" }: SectionCardProps) {
   return (
     <section className={`rounded-3xl border border-slate-200 bg-white shadow-sm ${className}`}>
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -307,7 +376,7 @@ function SectionCard({ title, action, children, className = "" }) {
   );
 }
 
-function PrimaryButton({ children, className = "", ...props }) {
+function PrimaryButton({ children, className = "", ...props }: ButtonProps) {
   return (
     <button
       className={`inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
@@ -318,7 +387,7 @@ function PrimaryButton({ children, className = "", ...props }) {
   );
 }
 
-function SecondaryButton({ children, className = "", ...props }) {
+function SecondaryButton({ children, className = "", ...props }: ButtonProps) {
   return (
     <button
       className={`inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
@@ -329,19 +398,29 @@ function SecondaryButton({ children, className = "", ...props }) {
   );
 }
 
-function TextInput(props) {
-  return <input {...props} className={`w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 transition placeholder:text-slate-400 focus:border-slate-400 ${props.className || ""}`} />;
+function TextInput({ className = "", ...props }: TextInputProps) {
+  return (
+    <input
+      {...props}
+      className={`w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 transition placeholder:text-slate-400 focus:border-slate-400 ${className}`}
+    />
+  );
 }
 
-function TextArea(props) {
-  return <textarea {...props} className={`w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 transition placeholder:text-slate-400 focus:border-slate-400 ${props.className || ""}`} />;
+function TextArea({ className = "", ...props }: TextAreaProps) {
+  return (
+    <textarea
+      {...props}
+      className={`w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 transition placeholder:text-slate-400 focus:border-slate-400 ${className}`}
+    />
+  );
 }
 
-function CheckInput(props) {
-  return <input type="checkbox" {...props} className={`h-4 w-4 rounded border-slate-300 text-slate-900 accent-slate-900 ${props.className || ""}`} />;
+function CheckInput({ className = "", ...props }: CheckInputProps) {
+  return <input type="checkbox" {...props} className={`h-4 w-4 rounded border-slate-300 text-slate-900 accent-slate-900 ${className}`} />;
 }
 
-function Pill({ children, tone = "default" }) {
+function Pill({ children, tone = "default" }: PillProps) {
   const styles = tone === "danger" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700";
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${styles}`}>{children}</span>;
 }
@@ -353,16 +432,16 @@ export default function MaintenanceSchedulerApp() {
   const diff = (8 - (day || 7)) % 7;
   nextMonday.setDate(nextMonday.getDate() + diff);
 
-  const [team, setTeam] = useState(initialMembers);
-  const [tasks, setTasks] = useState(() => buildInitialTasks(initialMembers));
-  const [history, setHistory] = useState([]);
-  const [scheduleStart, setScheduleStart] = useState(toYMD(nextMonday));
-  const [weeklyCapacity, setWeeklyCapacity] = useState(initialMembers.length);
-  const [generated, setGenerated] = useState(null);
-  const [seedNote, setSeedNote] = useState("Optional: paste notes here for your own reference.");
+  const [team, setTeam] = useState<TeamMember[]>(initialMembers);
+  const [tasks, setTasks] = useState<Task[]>(() => buildInitialTasks(initialMembers));
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [scheduleStart, setScheduleStart] = useState<string>(toYMD(nextMonday));
+  const [weeklyCapacity, setWeeklyCapacity] = useState<number>(initialMembers.length);
+  const [generated, setGenerated] = useState<ScheduleResult | null>(null);
+  const [seedNote, setSeedNote] = useState<string>("Optional: paste notes here for your own reference.");
 
   const stats = useMemo(() => {
-    const all = [...history];
+    const all: { memberId: string }[] = [...history];
     if (generated) {
       generated.assignments.forEach((assignment) => {
         if (assignment.memberId) all.push({ memberId: assignment.memberId });
@@ -387,7 +466,7 @@ export default function MaintenanceSchedulerApp() {
     });
   };
 
-  const removeMember = (memberId) => {
+  const removeMember = (memberId: string) => {
     setTeam((prev) => {
       const next = prev.filter((member) => member.id !== memberId);
       setWeeklyCapacity((current) => Math.max(1, Math.min(current, next.length || 1)));
@@ -416,11 +495,11 @@ export default function MaintenanceSchedulerApp() {
     ]);
   };
 
-  const removeTask = (taskId) => {
+  const removeTask = (taskId: string) => {
     setTasks((prev) => prev.filter((task) => task.id !== taskId));
   };
 
-  const toggleQualified = (taskId, memberId, checked) => {
+  const toggleQualified = (taskId: string, memberId: string, checked: boolean) => {
     setTasks((prev) =>
       prev.map((task) => {
         if (task.id !== taskId) return task;
@@ -447,13 +526,13 @@ export default function MaintenanceSchedulerApp() {
   const applyGeneratedToHistory = () => {
     if (!generated) return;
 
-    const newRows = generated.assignments
+    const newRows: HistoryRow[] = generated.assignments
       .filter((assignment) => assignment.memberId)
       .map((assignment) => ({
         date: assignment.weekStart,
         taskId: assignment.taskId,
         taskName: assignment.taskName,
-        memberId: assignment.memberId,
+        memberId: assignment.memberId as string,
       }));
 
     setHistory((prev) => [...prev, ...newRows]);
@@ -526,7 +605,7 @@ export default function MaintenanceSchedulerApp() {
 
             <SectionCard
               title="Generated schedule"
-              action={generated ? <SecondaryButton onClick={applyGeneratedToHistory}>Save generated schedule as completed history</SecondaryButton> : null}
+              action={generated ? <SecondaryButton onClick={applyGeneratedToHistory}>Save generated schedule as completed history</SecondaryButton> : undefined}
             >
               {!generated ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
