@@ -1,5 +1,6 @@
 "use client";
-import React, { useMemo, useState } from "react";
+
+import React, { useEffect, useMemo, useState } from "react";
 import { Trash2, Plus, Shuffle, Download } from "lucide-react";
 
 type TeamMember = {
@@ -59,15 +60,15 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 type TextInputProps = React.InputHTMLAttributes<HTMLInputElement>;
-
 type TextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
-
 type CheckInputProps = React.InputHTMLAttributes<HTMLInputElement>;
 
 type PillProps = {
   children: React.ReactNode;
   tone?: "default" | "danger";
 };
+
+const STORAGE_KEY = "maintenance_scheduler_data";
 
 const uid = (): string => Math.random().toString(36).slice(2, 10);
 
@@ -100,6 +101,21 @@ const initialTasks: Task[] = [
   { id: uid(), name: "Team Sweep", frequencyWeeks: 12, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin", "Dave"], lastCompleted: "", assignEntireTeam: true },
   { id: uid(), name: "Sand Blast", frequencyWeeks: 4, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin"], lastCompleted: "", assignEntireTeam: false },
 ];
+
+function saveToStorage(data: { team: TeamMember[]; tasks: Task[]; history: HistoryRow[] }): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function loadFromStorage(): { team?: TeamMember[]; tasks?: Task[]; history?: HistoryRow[] } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 function addWeeks(dateStr: string, weeks: number): Date {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -438,6 +454,18 @@ export default function MaintenanceSchedulerApp() {
   const [generated, setGenerated] = useState<ScheduleResult | null>(null);
   const [seedNote, setSeedNote] = useState<string>("Optional: paste notes here for your own reference.");
 
+  useEffect(() => {
+    const saved = loadFromStorage();
+    if (!saved) return;
+    if (Array.isArray(saved.team) && saved.team.length) setTeam(saved.team);
+    if (Array.isArray(saved.tasks) && saved.tasks.length) setTasks(saved.tasks);
+    if (Array.isArray(saved.history)) setHistory(saved.history);
+  }, []);
+
+  useEffect(() => {
+    saveToStorage({ team, tasks, history });
+  }, [team, tasks, history]);
+
   const stats = useMemo(() => {
     const all: { memberId: string }[] = [...history];
     if (generated) {
@@ -543,6 +571,13 @@ export default function MaintenanceSchedulerApp() {
     );
   };
 
+  const clearSavedData = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(STORAGE_KEY);
+      window.location.reload();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -596,6 +631,7 @@ export default function MaintenanceSchedulerApp() {
                     <li>Among qualified members, the app favors whoever has fewer total assignments.</li>
                     <li>If there is still a tie, the app randomizes between those tied members.</li>
                     <li>Any task marked as a teamwide task assigns every team member for that week.</li>
+                    <li>Team, tasks, and history are saved in this browser automatically.</li>
                   </ul>
                 </div>
               </div>
@@ -671,7 +707,10 @@ export default function MaintenanceSchedulerApp() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Assignment totals">
+            <SectionCard
+              title="Assignment totals"
+              action={<SecondaryButton onClick={clearSavedData}>Clear saved data</SecondaryButton>}
+            >
               <div className="space-y-3">
                 {stats.map((row) => (
                   <div key={row.name} className="rounded-2xl border border-slate-200 bg-white p-3">
