@@ -1,6 +1,4 @@
 "use client";
-"use client";
-
 import React, { useMemo, useState } from "react";
 import { Trash2, Plus, Shuffle, Download } from "lucide-react";
 
