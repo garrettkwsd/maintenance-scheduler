@@ -25,6 +25,15 @@ type HistoryRow = {
   memberId: string;
 };
 
+type PersistedData = {
+  team?: TeamMember[];
+  tasks?: Task[];
+  history?: HistoryRow[];
+  scheduleStart?: string;
+  weeklyCapacity?: number;
+  seedNote?: string;
+};
+
 type Assignment = {
   weekStart: string;
   taskId: string;
@@ -102,12 +111,12 @@ const initialTasks: Task[] = [
   { id: uid(), name: "Sand Blast", frequencyWeeks: 4, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin"], lastCompleted: "", assignEntireTeam: false },
 ];
 
-function saveToStorage(data: { team: TeamMember[]; tasks: Task[]; history: HistoryRow[] }): void {
+function saveToStorage(data: PersistedData): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
-function loadFromStorage(): { team?: TeamMember[]; tasks?: Task[]; history?: HistoryRow[] } | null {
+function loadFromStorage(): PersistedData | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -460,27 +469,23 @@ export default function MaintenanceSchedulerApp() {
     if (Array.isArray(saved.team) && saved.team.length) setTeam(saved.team);
     if (Array.isArray(saved.tasks) && saved.tasks.length) setTasks(saved.tasks);
     if (Array.isArray(saved.history)) setHistory(saved.history);
+    if (typeof saved.scheduleStart === "string" && saved.scheduleStart) setScheduleStart(saved.scheduleStart);
+    if (typeof saved.weeklyCapacity === "number" && Number.isFinite(saved.weeklyCapacity)) setWeeklyCapacity(saved.weeklyCapacity);
+    if (typeof saved.seedNote === "string") setSeedNote(saved.seedNote);
   }, []);
 
   useEffect(() => {
-    saveToStorage({ team, tasks, history });
-  }, [team, tasks, history]);
+    saveToStorage({ team, tasks, history, scheduleStart, weeklyCapacity, seedNote });
+  }, [team, tasks, history, scheduleStart, weeklyCapacity, seedNote]);
 
   const stats = useMemo(() => {
-    const all: { memberId: string }[] = [...history];
-    if (generated) {
-      generated.assignments.forEach((assignment) => {
-        if (assignment.memberId) all.push({ memberId: assignment.memberId });
-      });
-    }
-
     const counts = Object.fromEntries(team.map((member) => [member.id, 0]));
-    all.forEach((row) => {
+    history.forEach((row) => {
       if (row.memberId && counts[row.memberId] !== undefined) counts[row.memberId] += 1;
     });
 
     return team.map((member) => ({ name: member.name || "Unnamed", count: counts[member.id] || 0 }));
-  }, [team, history, generated]);
+  }, [team, history]);
 
   const testResults = useMemo(() => runSchedulerTests(team, tasks), [team, tasks]);
 
@@ -561,7 +566,12 @@ export default function MaintenanceSchedulerApp() {
         memberId: assignment.memberId as string,
       }));
 
-    setHistory((prev) => [...prev, ...newRows]);
+    setHistory((prev) => {
+      const existingKeys = new Set(prev.map((row) => `${row.date}__${row.taskId}__${row.memberId}`));
+      const dedupedNewRows = newRows.filter((row) => !existingKeys.has(`${row.date}__${row.taskId}__${row.memberId}`));
+      return [...prev, ...dedupedNewRows];
+    });
+
     setTasks((prev) =>
       prev.map((task) => {
         const matchingRows = newRows.filter((row) => row.taskId === task.id);
@@ -569,6 +579,10 @@ export default function MaintenanceSchedulerApp() {
         return { ...task, lastCompleted: matchingRows[matchingRows.length - 1].date };
       })
     );
+
+    const nextWeek = addWeeks(generated.weekStart, 1);
+    setScheduleStart(toYMD(nextWeek));
+    setGenerated(null);
   };
 
   const clearSavedData = () => {
