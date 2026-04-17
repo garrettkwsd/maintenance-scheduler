@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Trash2, Plus, Shuffle, Download } from "lucide-react";
+import { Trash2, Plus, Shuffle, Download, ChevronLeft, ChevronRight } from "lucide-react";
 
 type TeamMember = {
   id: string;
@@ -23,15 +23,8 @@ type HistoryRow = {
   taskId: string;
   taskName: string;
   memberId: string;
-};
-
-type PersistedData = {
-  team?: TeamMember[];
-  tasks?: Task[];
-  history?: HistoryRow[];
-  scheduleStart?: string;
-  weeklyCapacity?: number;
-  seedNote?: string;
+  memberName?: string;
+  scheduledFor?: string;
 };
 
 type Assignment = {
@@ -41,6 +34,7 @@ type Assignment = {
   memberId: string | null;
   memberName: string;
   note: string;
+  scheduledFor?: string;
 };
 
 type ScheduleResult = {
@@ -54,6 +48,15 @@ type SchedulerParams = {
   history: HistoryRow[];
   scheduleStart: string;
   weeklyCapacity: number;
+};
+
+type PersistedData = {
+  team?: TeamMember[];
+  tasks?: Task[];
+  history?: HistoryRow[];
+  scheduleStart?: string;
+  weeklyCapacity?: number;
+  seedNote?: string;
 };
 
 type SectionCardProps = {
@@ -78,6 +81,7 @@ type PillProps = {
 };
 
 const STORAGE_KEY = "maintenance_scheduler_data";
+const HISTORY_PAGE_SIZE = 10;
 
 const uid = (): string => Math.random().toString(36).slice(2, 10);
 
@@ -88,27 +92,28 @@ const initialMembers: TeamMember[] = [
   { id: uid(), name: "Kevin" },
   { id: uid(), name: "Josh" },
   { id: uid(), name: "Dave" },
+  { id: uid(), name: "Christian" },
 ];
 
 const initialTasks: Task[] = [
-  { id: uid(), name: "Bathroom & Trash Cans", frequencyWeeks: 1, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Wash Bay", frequencyWeeks: 2, qualifiedNames: ["Cody", "Aiden", "Josh"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Bathroom & Trash Cans", frequencyWeeks: 1, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave", "Christian"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Wash Bay", frequencyWeeks: 2, qualifiedNames: ["Cody", "Aiden", "Josh", "Christian"], lastCompleted: "", assignEntireTeam: false },
   { id: uid(), name: "Oven Flue & Burner Fan", frequencyWeeks: 36, qualifiedNames: ["Josh", "Cody"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Powder Booth", frequencyWeeks: 3, qualifiedNames: ["Cody", "Aiden", "Josh"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Powder Booth", frequencyWeeks: 3, qualifiedNames: ["Cody", "Aiden", "Josh", "Christian"], lastCompleted: "", assignEntireTeam: false },
   { id: uid(), name: "Laser Filter & Trough", frequencyWeeks: 12, qualifiedNames: ["Dave", "Deane"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "CNC/VTL Metal Shavings", frequencyWeeks: 4, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Mounting Area", frequencyWeeks: 2, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Fabrication Area", frequencyWeeks: 2, qualifiedNames: ["Deane", "Cody", "Josh", "Aiden", "Kevin"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "CNC/VTL Metal Shavings", frequencyWeeks: 4, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave", "Christian"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Mounting Area", frequencyWeeks: 2, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin", "Christian"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Fabrication Area", frequencyWeeks: 2, qualifiedNames: ["Deane", "Cody", "Josh", "Aiden", "Kevin", "Christian"], lastCompleted: "", assignEntireTeam: false },
   { id: uid(), name: "Flight Bar Tracks", frequencyWeeks: 12, qualifiedNames: ["Cody", "Josh", "Aiden"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Tool Room", frequencyWeeks: 3, qualifiedNames: ["Deane", "Aiden", "Josh", "Cody", "Kevin"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Break Room", frequencyWeeks: 1, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Your Choice", frequencyWeeks: 3, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Tool Room", frequencyWeeks: 3, qualifiedNames: ["Deane", "Aiden", "Josh", "Cody", "Kevin", "Christian"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Break Room", frequencyWeeks: 1, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave", "Christian"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Your Choice", frequencyWeeks: 3, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave", "Christian"], lastCompleted: "", assignEntireTeam: false },
   { id: uid(), name: "Powder Guns", frequencyWeeks: 2, qualifiedNames: ["Cody", "Josh", "Aiden"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Solution for Broken Equipment", frequencyWeeks: 2, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Solar Panels", frequencyWeeks: 26, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Pressure Wash Wash Bay", frequencyWeeks: 12, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin"], lastCompleted: "", assignEntireTeam: false },
-  { id: uid(), name: "Team Sweep", frequencyWeeks: 12, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin", "Dave"], lastCompleted: "", assignEntireTeam: true },
-  { id: uid(), name: "Sand Blast", frequencyWeeks: 4, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Solution for Broken Equipment", frequencyWeeks: 2, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Dave", "Christian"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Solar Panels", frequencyWeeks: 26, qualifiedNames: ["Cody", "Aiden", "Deane", "Kevin", "Josh", "Christian"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Pressure Wash Wash Bay", frequencyWeeks: 12, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin", "Christian"], lastCompleted: "", assignEntireTeam: false },
+  { id: uid(), name: "Team Sweep", frequencyWeeks: 12, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin", "Dave", "Christian"], lastCompleted: "", assignEntireTeam: true },
+  { id: uid(), name: "Sand Blast", frequencyWeeks: 4, qualifiedNames: ["Cody", "Josh", "Aiden", "Deane", "Kevin", "Christian"], lastCompleted: "", assignEntireTeam: false },
 ];
 
 function saveToStorage(data: PersistedData): void {
@@ -145,6 +150,19 @@ function toYMD(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -240,6 +258,7 @@ function buildSchedule({ team, tasks, history, scheduleStart, weeklyCapacity }: 
             memberId: member.id,
             memberName: member.name,
             note: `Teamwide task every ${task.frequencyWeeks} week(s)`,
+            scheduledFor: "",
           });
           usedMembers.add(member.id);
           counts[member.id] = (counts[member.id] || 0) + 1;
@@ -262,6 +281,7 @@ function buildSchedule({ team, tasks, history, scheduleStart, weeklyCapacity }: 
       memberId: chosenId,
       memberName: memberMap[chosenId] || "Unknown",
       note: `Due every ${task.frequencyWeeks} week(s)`,
+      scheduledFor: "",
     });
     usedMembers.add(chosenId);
     counts[chosenId] = (counts[chosenId] || 0) + 1;
@@ -294,6 +314,7 @@ function buildSchedule({ team, tasks, history, scheduleStart, weeklyCapacity }: 
         memberId: chosenId,
         memberName: memberMap[chosenId] || "Unknown",
         note: `Queued fill-in task, frequency ${task.frequencyWeeks} week(s)`,
+        scheduledFor: "",
       });
       usedMembers.add(chosenId);
       counts[chosenId] = (counts[chosenId] || 0) + 1;
@@ -462,6 +483,8 @@ export default function MaintenanceSchedulerApp() {
   const [weeklyCapacity, setWeeklyCapacity] = useState<number>(initialMembers.length);
   const [generated, setGenerated] = useState<ScheduleResult | null>(null);
   const [seedNote, setSeedNote] = useState<string>("Optional: paste notes here for your own reference.");
+  const [activeView, setActiveView] = useState<"schedule" | "history">("schedule");
+  const [historyPage, setHistoryPage] = useState<number>(1);
 
   useEffect(() => {
     const saved = loadFromStorage();
@@ -478,14 +501,32 @@ export default function MaintenanceSchedulerApp() {
     saveToStorage({ team, tasks, history, scheduleStart, weeklyCapacity, seedNote });
   }, [team, tasks, history, scheduleStart, weeklyCapacity, seedNote]);
 
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
+    setHistoryPage((prev) => Math.min(prev, maxPage));
+  }, [history]);
+
   const stats = useMemo(() => {
     const counts = Object.fromEntries(team.map((member) => [member.id, 0]));
     history.forEach((row) => {
       if (row.memberId && counts[row.memberId] !== undefined) counts[row.memberId] += 1;
     });
-
     return team.map((member) => ({ name: member.name || "Unnamed", count: counts[member.id] || 0 }));
   }, [team, history]);
+
+  const sortedHistory = useMemo(() => {
+    return [...history].sort((a, b) => {
+      const aTime = new Date(a.scheduledFor || `${a.date}T00:00:00`).getTime();
+      const bTime = new Date(b.scheduledFor || `${b.date}T00:00:00`).getTime();
+      return bTime - aTime;
+    });
+  }, [history]);
+
+  const historyPageCount = Math.max(1, Math.ceil(sortedHistory.length / HISTORY_PAGE_SIZE));
+  const pagedHistory = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+    return sortedHistory.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [sortedHistory, historyPage]);
 
   const testResults = useMemo(() => runSchedulerTests(team, tasks), [team, tasks]);
 
@@ -542,6 +583,20 @@ export default function MaintenanceSchedulerApp() {
     );
   };
 
+  const updateGeneratedScheduledFor = (taskId: string, memberId: string | null, scheduledFor: string) => {
+    setGenerated((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        assignments: prev.assignments.map((assignment) =>
+          assignment.taskId === taskId && assignment.memberId === memberId
+            ? { ...assignment, scheduledFor }
+            : assignment
+        ),
+      };
+    });
+  };
+
   const generateSchedule = () => {
     setGenerated(
       buildSchedule({
@@ -552,6 +607,7 @@ export default function MaintenanceSchedulerApp() {
         weeklyCapacity,
       })
     );
+    setActiveView("schedule");
   };
 
   const applyGeneratedToHistory = () => {
@@ -564,6 +620,8 @@ export default function MaintenanceSchedulerApp() {
         taskId: assignment.taskId,
         taskName: assignment.taskName,
         memberId: assignment.memberId as string,
+        memberName: assignment.memberName,
+        scheduledFor: assignment.scheduledFor || "",
       }));
 
     setHistory((prev) => {
@@ -583,6 +641,8 @@ export default function MaintenanceSchedulerApp() {
     const nextWeek = addWeeks(generated.weekStart, 1);
     setScheduleStart(toYMD(nextWeek));
     setGenerated(null);
+    setActiveView("history");
+    setHistoryPage(1);
   };
 
   const clearSavedData = () => {
@@ -599,11 +659,11 @@ export default function MaintenanceSchedulerApp() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Maintenance Rotation Scheduler</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Zero-dependency UI version for easy Next.js deployment.
+              Assign weekly maintenance, store completion history, and carry frequencies forward.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <SecondaryButton onClick={() => downloadJson("maintenance-config.json", { team, tasks, history })}>
+            <SecondaryButton onClick={() => downloadJson("maintenance-config.json", { team, tasks, history, scheduleStart, weeklyCapacity, seedNote })}>
               <Download className="h-4 w-4" /> Export config
             </SecondaryButton>
             <PrimaryButton onClick={generateSchedule}>
@@ -612,8 +672,210 @@ export default function MaintenanceSchedulerApp() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-1">
+        <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+          <div className="space-y-6">
+            <SectionCard
+              title={activeView === "schedule" ? "Generated schedule" : "History"}
+              action={
+                <div className="flex flex-wrap items-center gap-2">
+                  <SecondaryButton onClick={() => setActiveView("schedule")} disabled={activeView === "schedule"}>
+                    Schedule view
+                  </SecondaryButton>
+                  <SecondaryButton onClick={() => setActiveView("history")} disabled={activeView === "history"}>
+                    History view
+                  </SecondaryButton>
+                  {activeView === "schedule" && generated ? (
+                    <PrimaryButton onClick={applyGeneratedToHistory}>Save to completed history</PrimaryButton>
+                  ) : null}
+                </div>
+              }
+            >
+              {activeView === "schedule" ? (
+                !generated ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-sm text-slate-500">
+                    Generate a schedule to see this week&apos;s assignments.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Week of {weekLabel(generated.weekStart)}</h3>
+                      <Pill>{generated.assignments.length} assignment(s)</Pill>
+                    </div>
+                    <div className="space-y-3">
+                      {generated.assignments.map((row, idx) => (
+                        <div
+                          key={`${row.taskId}-${row.memberId || idx}`}
+                          className="grid gap-4 rounded-2xl border border-slate-200 p-4 lg:grid-cols-[2fr_1fr_1fr_1.2fr] lg:items-center"
+                        >
+                          <div>
+                            <div className="font-medium">{row.taskName}</div>
+                            <div className="text-xs text-slate-500">{row.note}</div>
+                          </div>
+                          <div className="text-sm text-slate-700">{row.memberName}</div>
+                          <div className="text-xs text-slate-500">{row.memberId ? "Assigned" : "Needs setup"}</div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-slate-600">Scheduled date & time</label>
+                            <TextInput
+                              type="datetime-local"
+                              value={row.scheduledFor || ""}
+                              onChange={(e) => updateGeneratedScheduledFor(row.taskId, row.memberId, e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-600">
+                      Showing {pagedHistory.length} of {sortedHistory.length} saved records
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <SecondaryButton onClick={() => setHistoryPage((prev) => Math.max(1, prev - 1))} disabled={historyPage <= 1}>
+                        <ChevronLeft className="h-4 w-4" /> Prev
+                      </SecondaryButton>
+                      <Pill>Page {historyPage} of {historyPageCount}</Pill>
+                      <SecondaryButton onClick={() => setHistoryPage((prev) => Math.min(historyPageCount, prev + 1))} disabled={historyPage >= historyPageCount}>
+                        Next <ChevronRight className="h-4 w-4" />
+                      </SecondaryButton>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                      <thead className="bg-slate-50 text-left text-slate-600">
+                        <tr>
+                          <th className="px-4 py-3 font-medium">Completed Week</th>
+                          <th className="px-4 py-3 font-medium">Task</th>
+                          <th className="px-4 py-3 font-medium">Assigned To</th>
+                          <th className="px-4 py-3 font-medium">Scheduled Date & Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 bg-white">
+                        {pagedHistory.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                              No completed maintenance history yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          pagedHistory.map((row, idx) => (
+                            <tr key={`${row.date}-${row.taskId}-${row.memberId}-${idx}`}>
+                              <td className="px-4 py-3">{weekLabel(row.date)}</td>
+                              <td className="px-4 py-3">{row.taskName}</td>
+                              <td className="px-4 py-3">{row.memberName || team.find((member) => member.id === row.memberId)?.name || row.memberId}</td>
+                              <td className="px-4 py-3">{formatDateTime(row.scheduledFor)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Maintenance tasks"
+              action={
+                <SecondaryButton onClick={addTask}>
+                  <Plus className="h-4 w-4" /> Add task
+                </SecondaryButton>
+              }
+            >
+              <div className="space-y-4">
+                {tasks.map((task) => (
+                  <div key={task.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="grid gap-4 lg:grid-cols-[2fr_140px_180px_40px] lg:items-end">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700">Task</label>
+                        <TextInput
+                          placeholder="Maintenance task"
+                          value={task.name}
+                          onChange={(e) =>
+                            setTasks((prev) => prev.map((item) => (item.id === task.id ? { ...item, name: e.target.value } : item)))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700">Frequency (weeks)</label>
+                        <TextInput
+                          type="number"
+                          min={1}
+                          value={task.frequencyWeeks}
+                          onChange={(e) =>
+                            setTasks((prev) =>
+                              prev.map((item) =>
+                                item.id === task.id ? { ...item, frequencyWeeks: Number(e.target.value || 1) } : item
+                              )
+                            )
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700">Last completed</label>
+                        <TextInput
+                          type="date"
+                          value={task.lastCompleted}
+                          onChange={(e) =>
+                            setTasks((prev) =>
+                              prev.map((item) => (item.id === task.id ? { ...item, lastCompleted: e.target.value } : item))
+                            )
+                          }
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                        onClick={() => removeTask(task.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="text-sm font-medium text-slate-700">Qualified team members</label>
+                        <label className="flex items-center gap-2 text-sm text-slate-600">
+                          <CheckInput
+                            checked={Boolean(task.assignEntireTeam)}
+                            onChange={(e) =>
+                              setTasks((prev) =>
+                                prev.map((item) =>
+                                  item.id === task.id ? { ...item, assignEntireTeam: e.target.checked } : item
+                                )
+                              )
+                            }
+                          />
+                          Teamwide task
+                        </label>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {team.map((member) => {
+                          const checked = (task.qualifiedIds || []).includes(member.id);
+                          return (
+                            <label
+                              key={member.id}
+                              className="flex items-center gap-3 rounded-2xl border border-slate-200 p-3 text-sm hover:bg-slate-50"
+                            >
+                              <CheckInput
+                                checked={checked}
+                                onChange={(e) => toggleQualified(task.id, member.id, e.target.checked)}
+                              />
+                              <span>{member.name || "Unnamed member"}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="space-y-6">
             <SectionCard title="Schedule settings">
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -643,53 +905,13 @@ export default function MaintenanceSchedulerApp() {
                     <li>If more tasks are due than the week can hold, the extras stay queued for later.</li>
                     <li>If fewer tasks are due, the app pulls in the next queued tasks so everyone still gets one assignment.</li>
                     <li>Among qualified members, the app favors whoever has fewer total assignments.</li>
-                    <li>If there is still a tie, the app randomizes between those tied members.</li>
-                    <li>Any task marked as a teamwide task assigns every team member for that week.</li>
-                    <li>Team, tasks, and history are saved in this browser automatically.</li>
+                    <li>Teamwide tasks assign the full team for that week.</li>
+                    <li>Date/time fields are optional and saved into history when provided.</li>
                   </ul>
                 </div>
               </div>
             </SectionCard>
 
-            <SectionCard
-              title="Generated schedule"
-              action={generated ? <SecondaryButton onClick={applyGeneratedToHistory}>Save generated schedule as completed history</SecondaryButton> : undefined}
-            >
-              {!generated ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
-                  Generate a schedule to see this week&apos;s assignments.
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">Week of {weekLabel(generated.weekStart)}</h3>
-                    <Pill>{generated.assignments.length} assignment(s)</Pill>
-                  </div>
-                  <div className="space-y-2">
-                    {generated.assignments.length === 0 ? (
-                      <div className="text-sm text-slate-500">No assignments could be generated for this week.</div>
-                    ) : (
-                      generated.assignments.map((row, idx) => (
-                        <div
-                          key={`${row.taskId}-${row.memberId || idx}`}
-                          className="grid gap-2 rounded-2xl border border-slate-200 p-3 md:grid-cols-[2fr_1fr_1fr] md:items-center"
-                        >
-                          <div>
-                            <div className="font-medium">{row.taskName}</div>
-                            <div className="text-xs text-slate-500">{row.note}</div>
-                          </div>
-                          <div className="text-sm text-slate-700">{row.memberName}</div>
-                          <div className="text-xs text-slate-500">{row.memberId ? "Assigned" : "Needs setup"}</div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </SectionCard>
-          </div>
-
-          <div className="space-y-6 lg:col-span-2">
             <SectionCard
               title="Team"
               action={
@@ -700,7 +922,7 @@ export default function MaintenanceSchedulerApp() {
             >
               <div className="space-y-3">
                 {team.map((member, idx) => (
-                  <div key={member.id} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 md:grid-cols-[40px_1fr_40px] md:items-center">
+                  <div key={member.id} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 md:grid-cols-[32px_1fr_40px] md:items-center">
                     <div className="text-sm font-medium text-slate-500">{idx + 1}</div>
                     <TextInput
                       placeholder="Team member name"
@@ -736,117 +958,19 @@ export default function MaintenanceSchedulerApp() {
                 ))}
               </div>
             </SectionCard>
+
+            <SectionCard title="Scheduler self-checks">
+              <div className="space-y-2">
+                {testResults.map((result) => (
+                  <div key={result.name} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 text-sm">
+                    <span>{result.name}</span>
+                    <Pill tone={result.passed ? "default" : "danger"}>{result.passed ? "Pass" : "Fail"}</Pill>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
           </div>
         </div>
-
-        <SectionCard
-          title="Maintenance tasks"
-          action={
-            <SecondaryButton onClick={addTask}>
-              <Plus className="h-4 w-4" /> Add task
-            </SecondaryButton>
-          }
-        >
-          <div className="space-y-4">
-            {tasks.map((task) => (
-              <div key={task.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="grid gap-4 lg:grid-cols-[2fr_140px_180px_40px] lg:items-end">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Task</label>
-                    <TextInput
-                      placeholder="Maintenance task"
-                      value={task.name}
-                      onChange={(e) =>
-                        setTasks((prev) => prev.map((item) => (item.id === task.id ? { ...item, name: e.target.value } : item)))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Frequency (weeks)</label>
-                    <TextInput
-                      type="number"
-                      min={1}
-                      value={task.frequencyWeeks}
-                      onChange={(e) =>
-                        setTasks((prev) =>
-                          prev.map((item) =>
-                            item.id === task.id ? { ...item, frequencyWeeks: Number(e.target.value || 1) } : item
-                          )
-                        )
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">Last completed</label>
-                    <TextInput
-                      type="date"
-                      value={task.lastCompleted}
-                      onChange={(e) =>
-                        setTasks((prev) =>
-                          prev.map((item) => (item.id === task.id ? { ...item, lastCompleted: e.target.value } : item))
-                        )
-                      }
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                    onClick={() => removeTask(task.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-sm font-medium text-slate-700">Qualified team members</label>
-                    <label className="flex items-center gap-2 text-sm text-slate-600">
-                      <CheckInput
-                        checked={Boolean(task.assignEntireTeam)}
-                        onChange={(e) =>
-                          setTasks((prev) =>
-                            prev.map((item) =>
-                              item.id === task.id ? { ...item, assignEntireTeam: e.target.checked } : item
-                            )
-                          )
-                        }
-                      />
-                      Teamwide task
-                    </label>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {team.map((member) => {
-                      const checked = (task.qualifiedIds || []).includes(member.id);
-                      return (
-                        <label
-                          key={member.id}
-                          className="flex items-center gap-3 rounded-2xl border border-slate-200 p-3 text-sm hover:bg-slate-50"
-                        >
-                          <CheckInput
-                            checked={checked}
-                            onChange={(e) => toggleQualified(task.id, member.id, e.target.checked)}
-                          />
-                          <span>{member.name || "Unnamed member"}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Scheduler self-checks">
-          <div className="space-y-2">
-            {testResults.map((result) => (
-              <div key={result.name} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 text-sm">
-                <span>{result.name}</span>
-                <Pill tone={result.passed ? "default" : "danger"}>{result.passed ? "Pass" : "Fail"}</Pill>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
       </div>
     </div>
   );
