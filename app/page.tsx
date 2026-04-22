@@ -554,7 +554,6 @@ export default function MaintenanceSchedulerApp() {
 
   const addTask = () => {
     setTasks((prev) => [
-      ...prev,
       {
         id: uid(),
         name: "",
@@ -564,6 +563,7 @@ export default function MaintenanceSchedulerApp() {
         lastCompleted: "",
         assignEntireTeam: false,
       },
+      ...prev,
     ]);
   };
 
@@ -591,6 +591,70 @@ export default function MaintenanceSchedulerApp() {
         assignments: prev.assignments.map((assignment) =>
           assignment.taskId === taskId && assignment.memberId === memberId
             ? { ...assignment, scheduledFor }
+            : assignment
+        ),
+      };
+    });
+  };
+
+  const replaceGeneratedTask = (taskId: string, memberId: string | null) => {
+    if (!generated || !memberId) return;
+
+    const assignmentToReplace = generated.assignments.find(
+      (assignment) => assignment.taskId === taskId && assignment.memberId === memberId
+    );
+    if (!assignmentToReplace) return;
+
+    const memberAssignments = new Set(
+      generated.assignments
+        .filter((assignment) => assignment.memberId && assignment.memberId !== memberId)
+        .map((assignment) => assignment.taskId)
+    );
+
+    const taskLastCompleted = Object.fromEntries(tasks.map((task) => [task.id, task.lastCompleted || ""]));
+    history.forEach((row) => {
+      if (row.taskId && row.date > (taskLastCompleted[row.taskId] || "")) {
+        taskLastCompleted[row.taskId] = row.date;
+      }
+    });
+
+    const weekStartDate = new Date(`${generated.weekStart}T00:00:00`);
+    const dueScore = (task: Task): number => {
+      const lastCompleted = taskLastCompleted[task.id] || task.lastCompleted || "";
+      if (!lastCompleted) return Number.POSITIVE_INFINITY;
+      const nextDue = addWeeks(lastCompleted, Number(task.frequencyWeeks || 1));
+      const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+      return Math.floor((weekStartDate.getTime() - nextDue.getTime()) / msPerWeek);
+    };
+
+    const candidates = tasks
+      .filter((task) => task.id !== taskId)
+      .filter((task) => !task.assignEntireTeam)
+      .filter((task) => (task.qualifiedIds || []).includes(memberId))
+      .filter((task) => !generated.assignments.some((assignment) => assignment.taskId === task.id))
+      .filter((task) => !memberAssignments.has(task.id))
+      .sort((a, b) => {
+        const aScore = dueScore(a);
+        const bScore = dueScore(b);
+        if (aScore !== bScore) return bScore - aScore;
+        return (a.frequencyWeeks || 1) - (b.frequencyWeeks || 1);
+      });
+
+    const replacement = candidates[0];
+    if (!replacement) return;
+
+    setGenerated((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        assignments: prev.assignments.map((assignment) =>
+          assignment.taskId === taskId && assignment.memberId === memberId
+            ? {
+                ...assignment,
+                taskId: replacement.id,
+                taskName: replacement.name || "Untitled task",
+                note: `Replacement task, frequency ${replacement.frequencyWeeks} week(s)`,
+              }
             : assignment
         ),
       };
@@ -705,7 +769,7 @@ export default function MaintenanceSchedulerApp() {
                       {generated.assignments.map((row, idx) => (
                         <div
                           key={`${row.taskId}-${row.memberId || idx}`}
-                          className="grid gap-4 rounded-2xl border border-slate-200 p-4 lg:grid-cols-[2fr_1fr_1fr_1.2fr] lg:items-center"
+                          className="grid gap-4 rounded-2xl border border-slate-200 p-4 lg:grid-cols-[2fr_1fr_1fr_1.2fr_auto] lg:items-center"
                         >
                           <div>
                             <div className="font-medium">{row.taskName}</div>
@@ -720,6 +784,15 @@ export default function MaintenanceSchedulerApp() {
                               value={row.scheduledFor || ""}
                               onChange={(e) => updateGeneratedScheduledFor(row.taskId, row.memberId, e.target.value)}
                             />
+                          </div>
+                          <div className="flex justify-end">
+                            <SecondaryButton
+                              onClick={() => replaceGeneratedTask(row.taskId, row.memberId)}
+                              disabled={!row.memberId}
+                              className="whitespace-nowrap"
+                            >
+                              Replace
+                            </SecondaryButton>
                           </div>
                         </div>
                       ))}
